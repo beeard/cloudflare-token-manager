@@ -1,7 +1,7 @@
 import type { MCPTool, Env, AuditLogEntry } from './types';
 import { CloudflareClient } from './cloudflare-client';
 import { listTemplates, getTemplate } from './templates';
-import { checkRateLimit, getClientId } from './lib/rate-limit';
+import { checkRateLimit } from './lib/rate-limit';
 import { validateArgs, validateIpCidrArray } from './lib/validation';
 import { RateLimitError, ValidationError } from './lib/errors';
 import { parseExpiresIn } from './lib/expiration';
@@ -275,7 +275,7 @@ export async function executeTool(
   }
 
   // Validate arguments against the tool's schema
-  const validatedArgs = validateArgs(toolName, args, tool.inputSchema);
+  const validArgs = validateArgs(toolName, args, tool.inputSchema);
 
   const client = new CloudflareClient(env.CLOUDFLARE_BOOTSTRAP_TOKEN);
 
@@ -291,17 +291,14 @@ export async function executeTool(
     }
   }
 
-  // Use validated args from here on
-  args = validatedArgs;
-
   // Validate account access if restricted
-  if (env.ALLOWED_ACCOUNT_IDS && args.accountId) {
+  if (env.ALLOWED_ACCOUNT_IDS && validArgs.accountId) {
     const allowed = env.ALLOWED_ACCOUNT_IDS.split(',').map(s => s.trim());
-    if (!allowed.includes(args.accountId as string)) {
+    if (!allowed.includes(validArgs.accountId as string)) {
       auditLog(env, {
         timestamp: new Date().toISOString(),
         operation: toolName,
-        accountId: args.accountId as string,
+        accountId: validArgs.accountId as string,
         success: false,
         error: 'Access denied: account not in allowed list',
         clientIp,
@@ -342,7 +339,7 @@ export async function executeTool(
   switch (toolName) {
     case 'list_permission_groups': {
       const groups = await client.listPermissionGroups();
-      const filter = args.filter as string | undefined;
+      const filter = validArgs.filter as string | undefined;
 
       let filtered = groups;
       if (filter) {
@@ -380,9 +377,9 @@ export async function executeTool(
     }
 
     case 'get_template': {
-      const template = getTemplate(args.templateId as string);
+      const template = getTemplate(validArgs.templateId as string);
       if (!template) {
-        throw new Error(`Template not found: ${args.templateId}`);
+        throw new Error(`Template not found: ${validArgs.templateId}`);
       }
 
       // Resolve permission IDs for display
@@ -395,43 +392,43 @@ export async function executeTool(
     }
 
     case 'list_tokens': {
-      const type = args.type as 'user' | 'account';
-      const page = (args.page as number) || 1;
-      const perPage = (args.perPage as number) || 50;
+      const type = validArgs.type as 'user' | 'account';
+      const page = (validArgs.page as number) || 1;
+      const perPage = (validArgs.perPage as number) || 50;
 
       if (type === 'account') {
-        if (!args.accountId) {
+        if (!validArgs.accountId) {
           throw new Error('accountId is required for account tokens');
         }
-        return client.listAccountTokens(args.accountId as string, page, perPage);
+        return client.listAccountTokens(validArgs.accountId as string, page, perPage);
       } else {
         return client.listUserTokens(page, perPage);
       }
     }
 
     case 'get_token': {
-      const type = args.type as 'user' | 'account';
-      const tokenId = args.tokenId as string;
+      const type = validArgs.type as 'user' | 'account';
+      const tokenId = validArgs.tokenId as string;
 
       if (type === 'account') {
-        if (!args.accountId) {
+        if (!validArgs.accountId) {
           throw new Error('accountId is required for account tokens');
         }
-        return client.getAccountToken(args.accountId as string, tokenId);
+        return client.getAccountToken(validArgs.accountId as string, tokenId);
       } else {
         return client.getUserToken(tokenId);
       }
     }
 
     case 'create_token': {
-      const type = args.type as 'user' | 'account';
-      const name = args.name as string;
-      const template = args.template as string | undefined;
-      const accountId = args.accountId as string | undefined;
+      const type = validArgs.type as 'user' | 'account';
+      const name = validArgs.name as string;
+      const template = validArgs.template as string | undefined;
+      const accountId = validArgs.accountId as string | undefined;
 
       // Validate IP CIDR arrays before using them
-      const ipAllow = validateIpCidrArray(args.ipAllow, 'ipAllow');
-      const ipDeny = validateIpCidrArray(args.ipDeny, 'ipDeny');
+      const ipAllow = validateIpCidrArray(validArgs.ipAllow, 'ipAllow');
+      const ipDeny = validateIpCidrArray(validArgs.ipDeny, 'ipDeny');
 
       return withAudit(
         'create_token',
@@ -443,7 +440,7 @@ export async function executeTool(
               accountId,
               name,
               templateId: template,
-              expiresIn: args.expiresIn as string | undefined,
+              expiresIn: validArgs.expiresIn as string | undefined,
               ipFilter: {
                 allow: ipAllow,
                 deny: ipDeny,
@@ -453,12 +450,12 @@ export async function executeTool(
           }
 
           // Custom policy creation
-          const permissionGroupIds = args.permissionGroupIds as string[] | undefined;
+          const permissionGroupIds = validArgs.permissionGroupIds as string[] | undefined;
           if (!permissionGroupIds || permissionGroupIds.length === 0) {
             throw new Error('Either template or permissionGroupIds is required');
           }
 
-          const resourceScope = (args.resourceScope as string) || 'all_accounts';
+          const resourceScope = (validArgs.resourceScope as string) || 'all_accounts';
           const resources: Record<string, string> = {};
 
           if (resourceScope === 'all_accounts') {
@@ -477,7 +474,7 @@ export async function executeTool(
           };
 
           // Parse expiration using shared utility
-          const expiresIn = args.expiresIn as string | undefined;
+          const expiresIn = validArgs.expiresIn as string | undefined;
           const expiresOn = parseExpiresIn(expiresIn);
 
           // IP conditions
@@ -518,9 +515,9 @@ export async function executeTool(
     }
 
     case 'revoke_token': {
-      const type = args.type as 'user' | 'account';
-      const tokenId = args.tokenId as string;
-      const accountId = args.accountId as string | undefined;
+      const type = validArgs.type as 'user' | 'account';
+      const tokenId = validArgs.tokenId as string;
+      const accountId = validArgs.accountId as string | undefined;
 
       return withAudit(
         'revoke_token',
@@ -540,16 +537,16 @@ export async function executeTool(
     }
 
     case 'verify_token': {
-      const token = args.token as string;
+      const token = validArgs.token as string;
       return client.verifyToken(token);
     }
 
     case 'rotate_token': {
-      const type = args.type as 'user' | 'account';
-      const tokenId = args.tokenId as string;
-      const revokeOld = args.revokeOld as boolean | undefined;
-      const newName = args.newName as string | undefined;
-      const accountId = args.accountId as string | undefined;
+      const type = validArgs.type as 'user' | 'account';
+      const tokenId = validArgs.tokenId as string;
+      const revokeOld = validArgs.revokeOld as boolean | undefined;
+      const newName = validArgs.newName as string | undefined;
+      const accountId = validArgs.accountId as string | undefined;
 
       return withAudit(
         'rotate_token',
@@ -628,7 +625,7 @@ export async function executeTool(
     }
 
     case 'get_account': {
-      const accountId = args.accountId as string;
+      const accountId = validArgs.accountId as string;
 
       // Check allowed accounts
       if (env.ALLOWED_ACCOUNT_IDS) {

@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { z } from 'zod';
 
 /**
  * Rate limit configuration per operation type
@@ -7,6 +8,15 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'token-ops': { requests: 10, windowSeconds: 60 },
   default: { requests: 100, windowSeconds: 60 },
 };
+
+/**
+ * Schema for validating KV rate limit data
+ */
+const RateLimitDataSchema = z.object({
+  count: z.number(),
+  timestamps: z.array(z.number()),
+  version: z.number(),
+});
 
 /**
  * Sliding window rate limiter using KV with atomic-like semantics
@@ -30,8 +40,10 @@ export async function checkRateLimit(
   const now = Date.now();
   const windowStart = now - config.windowSeconds * 1000;
 
-  // Get current count from KV
-  const stored = await env.RATE_LIMIT_KV.get<{ count: number; timestamps: number[]; version: number }>(key, 'json');
+  // Get current count from KV with validation
+  const raw = await env.RATE_LIMIT_KV.get(key, 'json');
+  const parsed = RateLimitDataSchema.safeParse(raw);
+  const stored = parsed.success ? parsed.data : null;
 
   let timestamps: number[] = stored?.timestamps || [];
   const version = (stored?.version || 0) + 1;

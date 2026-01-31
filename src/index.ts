@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Env, MCPRequest, MCPResponse } from './types';
 import { TOOLS, executeTool } from './tools';
 import { listTemplates } from './templates';
@@ -13,26 +14,25 @@ import { rateLimitHeaders } from './lib/rate-limit';
 
 /**
  * Constant-time string comparison to prevent timing attacks.
- * Uses XOR comparison to ensure consistent execution time.
+ * Pads shorter string to match length, then XORs all bytes.
  */
 function secureCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Compare against self to maintain constant time on length mismatch
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-      result |= a.charCodeAt(i) ^ a.charCodeAt(i);
-    }
-    return false;
+  const maxLen = Math.max(a.length, b.length);
+  let result = a.length ^ b.length; // Non-zero if lengths differ
+
+  for (let i = 0; i < maxLen; i++) {
+    const aChar = i < a.length ? a.charCodeAt(i) : 0;
+    const bChar = i < b.length ? b.charCodeAt(i) : 0;
+    result |= aChar ^ bChar;
   }
 
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
   return result === 0;
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Limit request body size to prevent DoS (100KB should be plenty for MCP requests)
+app.use('*', bodyLimit({ maxSize: 100 * 1024 }));
 
 // Health check with bootstrap token verification
 app.get('/health', async c => {

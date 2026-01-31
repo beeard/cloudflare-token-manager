@@ -251,6 +251,7 @@ export class CloudflareClient {
     valid: boolean;
     status?: string;
     expiresOn?: string;
+    error?: string;
   }> {
     try {
       const response = await fetch(`${CF_API_BASE}/user/tokens/verify`, {
@@ -273,9 +274,13 @@ export class CloudflareClient {
         };
       }
 
-      return { valid: false };
-    } catch {
-      return { valid: false };
+      const errorMsg = data.errors?.map(e => e.message).join(', ') || 'Unknown error';
+      console.warn('Token verification failed', { error: errorMsg, status: response.status });
+      return { valid: false, error: errorMsg };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Token verification error', { error: errorMsg });
+      return { valid: false, error: errorMsg };
     }
   }
 

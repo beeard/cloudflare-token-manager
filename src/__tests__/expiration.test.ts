@@ -109,7 +109,8 @@ describe('formatExpiration', () => {
   });
 
   it('formats months correctly', () => {
-    const futureDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 60).toISOString();
+    // Use 65 days to avoid edge case where 60 days rounds to 1 month due to timing
+    const futureDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 65).toISOString();
     expect(formatExpiration(futureDate)).toBe('2 months');
   });
 
