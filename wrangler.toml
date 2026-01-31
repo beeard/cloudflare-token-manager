@@ -8,8 +8,8 @@ compatibility_flags = ["nodejs_compat"]
 binding = "RATE_LIMIT_KV"
 id = "71f9c75df98742e38a9124ac6fb672be"
 
-# Dev environment only - never deployed
-[env.dev.vars]
+# Default vars (overridden by secrets in production via `wrangler secret put`)
+[vars]
 MCP_API_KEY = "ctm-dev-key-local-only"
 
 # Secrets (set via wrangler secret put):
