@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { timingSafeEqual } from 'node:crypto';
 import type { Env, MCPRequest, MCPResponse } from './types';
 import { TOOLS, executeTool } from './tools';
 import { listTemplates } from './templates';
@@ -13,16 +12,24 @@ import { categorizeError, RateLimitError } from './lib/errors';
 import { rateLimitHeaders } from './lib/rate-limit';
 
 /**
- * Constant-time string comparison to prevent timing attacks
+ * Constant-time string comparison to prevent timing attacks.
+ * Uses XOR comparison to ensure consistent execution time.
  */
 function secureCompare(a: string, b: string): boolean {
   if (a.length !== b.length) {
-    // Still do a comparison to maintain constant time even on length mismatch
-    const dummy = Buffer.from(a);
-    timingSafeEqual(dummy, dummy);
+    // Compare against self to maintain constant time on length mismatch
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ a.charCodeAt(i);
+    }
     return false;
   }
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -96,8 +103,9 @@ app.post('/mcp', async c => {
 
   // Authenticate with constant-time comparison to prevent timing attacks
   const apiKey = c.req.header('X-API-Key');
-  if (!apiKey || !secureCompare(apiKey, c.env.MCP_API_KEY)) {
-    logger.warn('Unauthorized request');
+  const expectedKey = c.env.MCP_API_KEY;
+  if (!apiKey || !expectedKey || !secureCompare(apiKey, expectedKey)) {
+    logger.warn('Unauthorized request', { hasApiKey: !!apiKey, hasExpectedKey: !!expectedKey });
     return respond(
       {
         jsonrpc: '2.0',

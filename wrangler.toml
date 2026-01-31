@@ -8,6 +8,10 @@ compatibility_flags = ["nodejs_compat"]
 binding = "RATE_LIMIT_KV"
 id = "71f9c75df98742e38a9124ac6fb672be"
 
+# Environment variables (for testing - move to secrets for production)
+[vars]
+MCP_API_KEY = "ctm-dev-key-2026"
+
 # Secrets (set via wrangler secret put):
 # - CLOUDFLARE_BOOTSTRAP_TOKEN: Token with "User > API Tokens > Edit" permission
-# - MCP_API_KEY: Authentication for MCP clients
+# - MCP_API_KEY: Authentication for MCP clients (set as secret in production)
